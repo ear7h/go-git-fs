@@ -1,5 +1,4 @@
 package gitfs
-
 import (
 	"fmt"
 	"io"
@@ -47,9 +46,9 @@ func NewFS(repo *git.Repository, rev string) (fs.FS, error) {
 }
 
 type Tree struct {
-	tree object.Tree
-	repo *git.Repository
 	hash plumbing.Hash
+	repo *git.Repository
+	tree object.Tree
 }
 
 func (tree *Tree) Open(name string) (ret fs.File, err error) {
@@ -59,16 +58,29 @@ func (tree *Tree) Open(name string) (ret fs.File, err error) {
 		}
 	}()
 
-	f, err := tree.tree.FindEntry(name)
-	if err != nil {
-		return nil, err
+
+	var (
+		mode filemode.FileMode
+		hash plumbing.Hash
+	)
+
+	if path.Clean(name) == "." {
+		mode = filemode.Dir
+		hash = tree.hash
+	} else {
+		f, err := tree.tree.FindEntry(name)
+		if err != nil {
+			return nil, err
+		}
+		mode = f.Mode
+		hash = f.Hash
 	}
 
 	return NewFile(tree.hash,
-		f.Hash,
+		hash,
 		tree.repo,
-		name,
-		f.Mode)
+		path.Clean(name),
+		mode)
 }
 
 type FileInfo struct {
@@ -164,6 +176,9 @@ func NewFileInfo(
 	case *object.Tree:
 		size = 0
 		isDir = true
+	case *object.Commit:
+		size = 0
+		isDir = true
 	case *object.Blob:
 		size = v.Size
 		isDir = false
@@ -176,8 +191,10 @@ func NewFileInfo(
 	}
 
 	if isDir {
-		logOpt.PathFilter = func(s string) bool {
-			return strings.HasPrefix(s, fullName)
+		if fullName != "." {
+			logOpt.PathFilter = func(s string) bool {
+				return strings.HasPrefix(s, fullName)
+			}
 		}
 	} else {
 		logOpt.FileName = &fullName
@@ -239,6 +256,15 @@ func NewFile(
 		size = 0
 		isDir = true
 		te = v.Entries
+
+	case *object.Commit:
+		size = 0
+		isDir = true
+		tree, err := v.Tree()
+		if err != nil {
+			return nil, err
+		}
+		te = tree.Entries
 	case *object.Blob:
 		size = v.Size
 		isDir = false
@@ -255,8 +281,10 @@ func NewFile(
 	}
 
 	if isDir {
-		logOpt.PathFilter = func(s string) bool {
-			return strings.HasPrefix(s, fullName)
+		if fullName != "." {
+			logOpt.PathFilter = func(s string) bool {
+				return strings.HasPrefix(s, fullName)
+			}
 		}
 	} else {
 		logOpt.FileName = &fullName
