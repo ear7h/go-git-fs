@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"mime"
+	"path"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
+// run with
+//		go run main.go $(git rev-parse --show-toplevel)
 func main() {
 	dir := os.Args[1]
 
@@ -26,7 +29,7 @@ func main() {
 	http.HandleFunc("/tree/", func(w http.ResponseWriter, r *http.Request) {
 		// /tree/{rev}/{path}
 
-		p := r.URL.Path[len("/tree/"):]
+		p := path.Clean(r.URL.Path + "/")[len("/tree/"):]
 		arr := strings.SplitN(p, "/", 2)
 
 		log.Println(arr)
@@ -37,9 +40,10 @@ func main() {
 			return
 		}
 
-		r.URL.Path = arr[1]
+		log.Println(r.Method, r.URL.Path)
 
-		http.FileServer(http.FS(fs)).ServeHTTP(w, r)
+		http.StripPrefix("/tree/" + arr[0],
+			http.FileServer(http.FS(fs))).ServeHTTP(w, r)
 	})
 
 	err = http.ListenAndServe(":8080", nil)
