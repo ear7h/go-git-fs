@@ -1,5 +1,6 @@
 package gitfs
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -70,6 +71,9 @@ func (tree *Tree) Open(name string) (ret fs.File, err error) {
 	} else {
 		f, err := tree.tree.FindEntry(name)
 		if err != nil {
+			if errors.Is(err, object.ErrEntryNotFound) {
+				return nil, fs.ErrNotExist
+			}
 			return nil, err
 		}
 		mode = f.Mode
